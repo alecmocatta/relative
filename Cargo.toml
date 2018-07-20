@@ -1,0 +1,33 @@
+[package]
+name = "relative"
+version = "0.1.0"
+license = "Apache-2.0"
+authors = ["Alec Mocatta <alec@mocatta.net>"]
+categories = ["development-tools","encoding","rust-patterns","network-programming"]
+keywords = ["serde","static","reference","pointer","distributed"]
+description = """
+A type to wrap `&'static` references such that they can be safely sent between other processes running the same binary.
+"""
+repository = "https://github.com/alecmocatta/relative"
+homepage = "https://github.com/alecmocatta/relative"
+documentation = "https://docs.rs/relative/0.1.0"
+readme = "README.md"
+
+[badges]
+appveyor = { repository = "alecmocatta/relative" }
+circle-ci = { repository = "alecmocatta/relative" }
+#gitlab = { repository = "alecmocatta/relative" }
+travis-ci = { repository = "alecmocatta/relative" }
+
+maintenance = { status = "actively-developed" }
+
+[dependencies]
+serde = "1.0"
+uuid = {version = "0.6", features = ["serde"]}
+build_id = "0.1"
+metatype = "0.1.1"
+
+[dev-dependencies]
+serde_derive = "1.0"
+serde_json = "1.0"
+bincode = "1.0"

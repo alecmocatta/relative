@@ -79,23 +79,28 @@ pub static RELATIVE_DATA_BASE: () = ();
 #[no_mangle]
 #[inline(never)]
 pub fn relative_code_base() {
-	unsafe { intrinsics::unreachable() };
+	unsafe { intrinsics::unreachable() }
 }
 
-/// This could plausibly be different in different compilation units? Else
-/// static? Else sync::Once?
-const VTABLE_BASE: *const any::Any = &() as &any::Any;
+#[doc(hidden)]
+#[used]
+#[no_mangle]
+pub static RELATIVE_VTABLE_BASE: &(any::Any + Sync) = &() as &(any::Any + Sync);
 
 /// Wraps function pointers such that they can be safely sent between other
 /// processes running the same binary.
 ///
 /// For references into the code aka text segment.
 ///
-/// The base used is the address of a function of signature:
+/// The base used is the address of a function:
 /// ```rust,ignore
 /// #[no_mangle]
 /// #[inline(never)]
-/// pub fn relative_code_base();
+/// pub fn relative_code_base() {
+/// 	unsafe { intrinsics::unreachable() }
+/// }
+///
+/// let base = relative_code_base as usize;
 /// ```
 pub struct Code<T: ?Sized>(usize, marker::PhantomData<fn(T)>);
 impl<T: ?Sized> Code<T> {
@@ -215,11 +220,13 @@ impl<'de, T: ?Sized + 'static> serde::de::Deserialize<'de> for Code<T> {
 ///
 /// For references into the data and BSS segments.
 ///
-/// The base used is the address of a zero sized static item of signature:
+/// The base used is the address of a zero sized static item:
 /// ```rust,ignore
 /// #[used]
 /// #[no_mangle]
-/// pub static RELATIVE_DATA_BASE: ();
+/// pub static RELATIVE_DATA_BASE: () = ();
+///
+/// let base = &RELATIVE_DATA_BASE as *const () as usize;
 /// ```
 pub struct Data<T>(usize, marker::PhantomData<fn(T)>);
 impl<T> Data<T> {
@@ -340,9 +347,14 @@ impl<'de, T: 'static> serde::de::Deserialize<'de> for Data<T> {
 /// For references into the segment that houses the vtables, typically the
 /// read-only data segment aka rodata.
 ///
-/// The base used is the vtable of a const:
+/// The base used is the vtable of a static trait object:
 /// ```rust,ignore
-/// const VTABLE_BASE: *const any::Any = &() as &any::Any;
+/// #[doc(hidden)]
+/// #[used]
+/// #[no_mangle]
+/// pub static RELATIVE_VTABLE_BASE: &(any::Any+Sync) = &() as &(any::Any+Sync);
+///
+/// let base = mem::transmute::<*const any::Any, raw::TraitObject>(RELATIVE_VTABLE_BASE).vtable as usize;
 /// ```
 pub struct Vtable<T: ?Sized>(usize, marker::PhantomData<fn(T)>);
 impl<T: ?Sized> Vtable<T> {
@@ -360,16 +372,20 @@ impl<T: ?Sized> Vtable<T> {
 	/// being statically linked.
 	#[inline(always)]
 	pub unsafe fn from(ptr: &'static ()) -> Self {
-		let base = mem::transmute::<*const any::Any, raw::TraitObject>(VTABLE_BASE).vtable as usize;
-		// println!("from: {}: {}", base, intrinsics::type_name::<T>());
+		let base = mem::transmute::<*const any::Any, raw::TraitObject>(RELATIVE_VTABLE_BASE).vtable
+			as usize;
+		// let data_base = &RELATIVE_DATA_BASE as *const () as usize;
+		// println!("from: {}: {}", base.wrapping_sub(data_base), unsafe{intrinsics::type_name::<T>()});
 		Self::new((ptr as *const () as usize).wrapping_sub(base))
 	}
 	/// Get back a `&'static ()` from a `Vtable<T>`.
 	#[inline(always)]
 	pub fn to(&self) -> &'static () {
-		let base = unsafe { mem::transmute::<*const any::Any, raw::TraitObject>(VTABLE_BASE) }
-			.vtable as usize;
-		// println!("to: {}: {}", base, intrinsics::type_name::<T>());
+		let base =
+			unsafe { mem::transmute::<*const any::Any, raw::TraitObject>(RELATIVE_VTABLE_BASE) }
+				.vtable as usize;
+		// let data_base = &RELATIVE_DATA_BASE as *const () as usize;
+		// println!("to: {}: {}", base.wrapping_sub(data_base), unsafe{intrinsics::type_name::<T>()});
 		unsafe { &*(base.wrapping_add(self.0) as *const ()) }
 	}
 }

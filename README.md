@@ -6,7 +6,7 @@
 [![Build Status](https://circleci.com/gh/alecmocatta/relative/tree/master.svg?style=shield)](https://circleci.com/gh/alecmocatta/relative)
 [![Build Status](https://travis-ci.com/alecmocatta/relative.svg?branch=master)](https://travis-ci.com/alecmocatta/relative)
 
-[Docs](https://docs.rs/relative/0.1.0)
+[Docs](https://docs.rs/relative/0.1.1)
 
 A type to wrap `&'static` references such that they can be safely sent between
 other processes running the same binary.

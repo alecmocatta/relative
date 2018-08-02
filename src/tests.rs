@@ -1,4 +1,4 @@
-use super::{Code, Pointer, Vtable};
+use super::{Code, Data, Vtable};
 use bincode;
 use metatype;
 use serde_json;
@@ -8,11 +8,11 @@ fn multi_process() {
 	#[derive(Serialize, Deserialize)]
 	#[serde(bound(serialize = ""), bound(deserialize = ""))]
 	struct Xxx<A: 'static, B: 'static + ?Sized> {
-		a: Pointer<[u8; 5]>,
-		b: Pointer<Code<()>>,
-		c: Pointer<Vtable<()>>,
-		d: Pointer<Code<A>>,
-		e: Pointer<Vtable<B>>,
+		a: Data<[u8; 5]>,
+		b: Code<()>,
+		c: Vtable<()>,
+		d: Code<A>,
+		e: Vtable<B>,
 	}
 	impl<A: 'static, B: 'static + ?Sized> PartialEq for Xxx<A, B> {
 		#[inline(always)]
@@ -35,26 +35,22 @@ fn multi_process() {
 				.finish()
 		}
 	}
-	fn code<T>(_: &T, ptr: *const ()) -> *const Code<T> {
-		ptr as *const Code<T>
+	unsafe fn code<T>(_: &T, ptr: *const ()) -> Code<T> {
+		Code::from(ptr)
 	}
-	fn vtable<T: ?Sized>(_: &T, ptr: *const ()) -> *const Vtable<T> {
-		ptr as *const Vtable<T>
+	unsafe fn vtable<T: ?Sized>(_: &T, ptr: &'static ()) -> Vtable<T> {
+		Vtable::from(ptr)
 	}
 	fn eq<T: ?Sized>(_: &T, _: &T) {}
-	let trait_object: Box<any::Any> = Box::new(1234usize);
+	let trait_object: Box<any::Any> = Box::new(1234_usize);
 	let meta: metatype::TraitObject =
 		unsafe { mem::transmute_copy(&<any::Any as metatype::Type>::meta(&*trait_object)) };
 	let a = Xxx {
-		a: unsafe { Pointer::from(&[0, 1, 2, 3, 4]) },
-		b: unsafe { Pointer::from(&*(&(multi_process as fn()) as *const fn() as *const Code<()>)) },
-		c: unsafe {
-			Pointer::from(mem::transmute::<&'static (), &'static Vtable<()>>(
-				meta.vtable,
-			))
-		},
-		d: unsafe { Pointer::from(&*code(&multi_process, multi_process as fn() as *const ())) },
-		e: unsafe { Pointer::from(&*vtable(&*trait_object, meta.vtable)) },
+		a: unsafe { Data::from(&[0, 1, 2, 3, 4]) },
+		b: unsafe { Code::from(multi_process as *const ()) },
+		c: unsafe { Vtable::from(meta.vtable) },
+		d: unsafe { code(&multi_process, multi_process as *const ()) },
+		e: unsafe { vtable(&*trait_object, meta.vtable) },
 	};
 	let exe = env::current_exe().unwrap();
 	if let Ok(x) = env::var("SPAWNED_TOKEN_RELATIVE") {
@@ -75,12 +71,12 @@ fn multi_process() {
 			.env(
 				"SPAWNED_TOKEN_RELATIVE",
 				serde_json::to_string(&(&a, bincode::serialize(&a).unwrap())).unwrap(),
-			)
-			.output()
+			).output()
 			.unwrap();
 		if !str::from_utf8(&output.stdout)
 			.unwrap()
-			.contains("success_token_relative") || !output.status.success()
+			.contains("success_token_relative")
+			|| !output.status.success()
 		{
 			panic!("{}: {:?}", i, output);
 		}

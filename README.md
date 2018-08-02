@@ -11,9 +11,9 @@
 A type to wrap `&'static` references such that they can be safely sent between
 other processes running the same binary.
 
-References are adjusted relative to a base when (de)serialised, which accounts
-for binaries being dynamically loaded at different addresses under multiple
-invocations.
+References are adjusted relative to a base when (de)serialised, which is what
+enables it to work across binaries that are dynamically loaded at different
+addresses under multiple invocations.
 
 It being the same binary is checked by serialising the
 [`build_id`](https://docs.rs/build_id) alongside the relative pointer, which is
@@ -24,7 +24,7 @@ validated at deserialisation.
 ```rust
 let x: &'static [u16;4] = &[2,3,5,8];
 // unsafe as it's up to the user to ensure the reference is into static memory
-let relative = unsafe{Pointer::from(x)};
+let relative = unsafe{Data::from(x)};
 // send `relative` to remote...
 ```
 ### Remote process

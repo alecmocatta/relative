@@ -24,8 +24,8 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 serde = "1.0"
 uuid = {version = "0.6", features = ["serde"]}
-build_id = "0.1"
-metatype = "0.1.1"
+build_id = { version = "0.1" } #, path = "../build_id" }
+metatype = { version = "0.1.1" } #, path = "../metatype" }
 
 [dev-dependencies]
 serde_derive = "1.0"

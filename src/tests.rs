@@ -71,7 +71,8 @@ fn multi_process() {
 			.env(
 				"SPAWNED_TOKEN_RELATIVE",
 				serde_json::to_string(&(&a, bincode::serialize(&a).unwrap())).unwrap(),
-			).output()
+			)
+			.output()
 			.unwrap();
 		if !str::from_utf8(&output.stdout)
 			.unwrap()

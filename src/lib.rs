@@ -35,7 +35,7 @@
 //! This currently requires Rust nightly.
 
 #![doc(html_root_url = "https://docs.rs/relative/0.1.2")]
-#![feature(used, core_intrinsics, raw)]
+#![feature(core_intrinsics, raw, used)]
 #![warn(
 	missing_copy_implementations,
 	missing_debug_implementations,
@@ -45,11 +45,13 @@
 	unused_import_braces,
 	unused_qualifications,
 	unused_results,
+	clippy::pedantic
 )] // from https://github.com/rust-unofficial/patterns/blob/master/anti_patterns/deny-warnings.md
-#![cfg_attr(feature = "cargo-clippy", warn(clippy_pedantic))]
-#![cfg_attr(
-	feature = "cargo-clippy",
-	allow(inline_always, doc_markdown, trivially_copy_pass_by_ref)
+#![allow(
+	stable_features,
+	clippy::inline_always,
+	clippy::doc_markdown,
+	clippy::trivially_copy_pass_by_ref
 )]
 
 extern crate build_id;

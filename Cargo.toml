@@ -23,7 +23,7 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 serde = "1.0"
-uuid = {version = "0.6", features = ["serde"]}
+uuid = {version = "0.7", features = ["serde"]}
 build_id = { version = "0.1" } #, path = "../build_id" }
 metatype = { version = "0.1.1" } #, path = "../metatype" }
 

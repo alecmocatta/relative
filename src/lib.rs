@@ -40,8 +40,8 @@
 	missing_copy_implementations,
 	missing_debug_implementations,
 	missing_docs,
+	trivial_casts,
 	trivial_numeric_casts,
-	unused_extern_crates,
 	unused_import_braces,
 	unused_qualifications,
 	unused_results,
@@ -53,22 +53,6 @@
 	clippy::doc_markdown,
 	clippy::trivially_copy_pass_by_ref
 )]
-
-extern crate build_id;
-#[cfg(test)]
-extern crate metatype;
-extern crate serde;
-extern crate uuid;
-#[cfg(test)]
-#[macro_use]
-extern crate serde_derive;
-#[cfg(test)]
-extern crate bincode;
-#[cfg(test)]
-extern crate serde_json;
-
-#[cfg(test)]
-mod tests;
 
 use std::{any, cmp, fmt, hash, intrinsics, marker, mem, raw};
 
@@ -87,7 +71,7 @@ pub fn relative_code_base() {
 #[doc(hidden)]
 #[used]
 #[no_mangle]
-pub static RELATIVE_VTABLE_BASE: &(any::Any + Sync) = &() as &(any::Any + Sync);
+pub static RELATIVE_VTABLE_BASE: &(dyn any::Any + Sync) = &();
 
 /// Wraps function pointers such that they can be safely sent between other
 /// processes running the same binary.
@@ -108,7 +92,7 @@ pub struct Code<T: ?Sized>(usize, marker::PhantomData<fn(T)>);
 impl<T: ?Sized> Code<T> {
 	#[inline(always)]
 	fn new(p: usize) -> Self {
-		Code(p, marker::PhantomData)
+		Self(p, marker::PhantomData)
 	}
 	/// Create a `Code<T>` from a `*const ()`.
 	///
@@ -135,7 +119,7 @@ impl<T: ?Sized> Code<T> {
 impl<T: ?Sized> Clone for Code<T> {
 	#[inline(always)]
 	fn clone(&self) -> Self {
-		Code(self.0, marker::PhantomData)
+		Self(self.0, marker::PhantomData)
 	}
 }
 impl<T: ?Sized> Copy for Code<T> {}
@@ -234,7 +218,7 @@ pub struct Data<T>(usize, marker::PhantomData<fn(T)>);
 impl<T> Data<T> {
 	#[inline(always)]
 	fn new(p: usize) -> Self {
-		Data(p, marker::PhantomData)
+		Self(p, marker::PhantomData)
 	}
 	/// Create a `Data<T>` from a `&'static T`.
 	///
@@ -246,14 +230,26 @@ impl<T> Data<T> {
 	/// being statically linked.
 	#[inline(always)]
 	pub unsafe fn from(ptr: &'static T) -> Self {
-		let base = &RELATIVE_DATA_BASE as *const () as usize;
+		let base = {
+			let base: *const () = &RELATIVE_DATA_BASE;
+			base
+		} as usize;
 		// println!("from: {}: {}", base, intrinsics::type_name::<T>());
-		Self::new((ptr as *const T as usize).wrapping_sub(base))
+		Self::new(
+			({
+				let ptr: *const T = ptr;
+				ptr
+			} as usize)
+				.wrapping_sub(base),
+		)
 	}
 	/// Get back a `&'static T` from a `Data<T>`.
 	#[inline(always)]
 	pub fn to(&self) -> &'static T {
-		let base = &RELATIVE_DATA_BASE as *const () as usize;
+		let base = {
+			let base: *const () = &RELATIVE_DATA_BASE;
+			base
+		} as usize;
 		// println!("to: {}: {}", base, intrinsics::type_name::<T>());
 		unsafe { &*(base.wrapping_add(self.0) as *const T) }
 	}
@@ -261,7 +257,7 @@ impl<T> Data<T> {
 impl<T> Clone for Data<T> {
 	#[inline(always)]
 	fn clone(&self) -> Self {
-		Data(self.0, marker::PhantomData)
+		Self(self.0, marker::PhantomData)
 	}
 }
 impl<T> Copy for Data<T> {}
@@ -354,15 +350,15 @@ impl<'de, T: 'static> serde::de::Deserialize<'de> for Data<T> {
 /// #[doc(hidden)]
 /// #[used]
 /// #[no_mangle]
-/// pub static RELATIVE_VTABLE_BASE: &(any::Any+Sync) = &() as &(any::Any+Sync);
+/// pub static RELATIVE_VTABLE_BASE: &(dyn any::Any+Sync) = &() as &(dyn any::Any+Sync);
 ///
-/// let base = mem::transmute::<*const any::Any, raw::TraitObject>(RELATIVE_VTABLE_BASE).vtable as usize;
+/// let base = mem::transmute::<*const dyn any::Any, raw::TraitObject>(RELATIVE_VTABLE_BASE).vtable as usize;
 /// ```
 pub struct Vtable<T: ?Sized>(usize, marker::PhantomData<fn(T)>);
 impl<T: ?Sized> Vtable<T> {
 	#[inline(always)]
 	fn new(p: usize) -> Self {
-		Vtable(p, marker::PhantomData)
+		Self(p, marker::PhantomData)
 	}
 	/// Create a `Vtable<T>` from a `&'static ()`.
 	///
@@ -374,18 +370,25 @@ impl<T: ?Sized> Vtable<T> {
 	/// being statically linked.
 	#[inline(always)]
 	pub unsafe fn from(ptr: &'static ()) -> Self {
-		let base = mem::transmute::<*const any::Any, raw::TraitObject>(RELATIVE_VTABLE_BASE).vtable
-			as usize;
+		let base = mem::transmute::<*const dyn any::Any, raw::TraitObject>(RELATIVE_VTABLE_BASE)
+			.vtable as usize;
 		// let data_base = &RELATIVE_DATA_BASE as *const () as usize;
 		// println!("from: {}: {}", base.wrapping_sub(data_base), unsafe{intrinsics::type_name::<T>()});
-		Self::new((ptr as *const () as usize).wrapping_sub(base))
+		Self::new(
+			({
+				let ptr: *const () = ptr;
+				ptr
+			} as usize)
+				.wrapping_sub(base),
+		)
 	}
 	/// Get back a `&'static ()` from a `Vtable<T>`.
 	#[inline(always)]
 	pub fn to(&self) -> &'static () {
-		let base =
-			unsafe { mem::transmute::<*const any::Any, raw::TraitObject>(RELATIVE_VTABLE_BASE) }
-				.vtable as usize;
+		let base = unsafe {
+			mem::transmute::<*const dyn any::Any, raw::TraitObject>(RELATIVE_VTABLE_BASE)
+		}
+		.vtable as usize;
 		// let data_base = &RELATIVE_DATA_BASE as *const () as usize;
 		// println!("to: {}: {}", base.wrapping_sub(data_base), unsafe{intrinsics::type_name::<T>()});
 		unsafe { &*(base.wrapping_add(self.0) as *const ()) }
@@ -394,7 +397,7 @@ impl<T: ?Sized> Vtable<T> {
 impl<T: ?Sized> Clone for Vtable<T> {
 	#[inline(always)]
 	fn clone(&self) -> Self {
-		Vtable(self.0, marker::PhantomData)
+		Self(self.0, marker::PhantomData)
 	}
 }
 impl<T: ?Sized> Copy for Vtable<T> {}
@@ -473,5 +476,94 @@ impl<'de, T: ?Sized + 'static> serde::de::Deserialize<'de> for Vtable<T> {
 					)))
 				}
 			})
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{Code, Data, Vtable};
+	use bincode;
+	use metatype;
+	use serde_derive::{Deserialize, Serialize};
+	use serde_json;
+	use std::{any, env, fmt, mem, process, str};
+
+	#[test]
+	fn multi_process() {
+		#[derive(Serialize, Deserialize)]
+		#[serde(bound(serialize = ""), bound(deserialize = ""))]
+		struct Xxx<A: 'static, B: 'static + ?Sized> {
+			a: Data<[u8; 5]>,
+			b: Code<()>,
+			c: Vtable<()>,
+			d: Code<A>,
+			e: Vtable<B>,
+		}
+		impl<A: 'static, B: 'static + ?Sized> PartialEq for Xxx<A, B> {
+			#[inline(always)]
+			fn eq(&self, other: &Self) -> bool {
+				self.a == other.a
+					&& self.b == other.b && self.c == other.c
+					&& self.d == other.d && self.e == other.e
+			}
+		}
+		impl<A: 'static, B: 'static + ?Sized> fmt::Debug for Xxx<A, B> {
+			fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+				f.debug_struct("Xxx")
+					.field("a", &self.a)
+					.field("b", &self.b)
+					.field("c", &self.c)
+					.field("d", &self.d)
+					.field("e", &self.e)
+					.finish()
+			}
+		}
+		unsafe fn code<T>(_: &T, ptr: *const ()) -> Code<T> {
+			Code::from(ptr)
+		}
+		unsafe fn vtable<T: ?Sized>(_: &T, ptr: &'static ()) -> Vtable<T> {
+			Vtable::from(ptr)
+		}
+		fn eq<T: ?Sized>(_: &T, _: &T) {}
+		let trait_object: Box<dyn any::Any> = Box::new(1234_usize);
+		let meta: metatype::TraitObject =
+			unsafe { mem::transmute_copy(&<dyn any::Any as metatype::Type>::meta(&*trait_object)) };
+		let a = Xxx {
+			a: unsafe { Data::from(&[0, 1, 2, 3, 4]) },
+			b: unsafe { Code::from(multi_process as *const ()) },
+			c: unsafe { Vtable::from(meta.vtable) },
+			d: unsafe { code(&multi_process, multi_process as *const ()) },
+			e: unsafe { vtable(&*trait_object, meta.vtable) },
+		};
+		let exe = env::current_exe().unwrap();
+		if let Ok(x) = env::var("SPAWNED_TOKEN_RELATIVE") {
+			let (a2, bc): (_, Vec<u8>) = serde_json::from_str(&x).unwrap();
+			eq(&a, &a2);
+			let a3 = bincode::deserialize(&bc).unwrap();
+			eq(&a, &a3);
+			assert_eq!(a, a2);
+			assert_eq!(a, a3);
+			println!("success_token_relative {:?}", a2);
+			return;
+		}
+		for i in 0..100 {
+			let output = process::Command::new(&exe)
+				.arg("--nocapture")
+				.arg("--exact")
+				.arg("tests::multi_process")
+				.env(
+					"SPAWNED_TOKEN_RELATIVE",
+					serde_json::to_string(&(&a, bincode::serialize(&a).unwrap())).unwrap(),
+				)
+				.output()
+				.unwrap();
+			if !str::from_utf8(&output.stdout)
+				.unwrap()
+				.contains("success_token_relative")
+				|| !output.status.success()
+			{
+				panic!("{}: {:?}", i, output);
+			}
+		}
 	}
 }

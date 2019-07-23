@@ -1,8 +1,10 @@
 use super::{Code, Data, Vtable};
 use bincode;
 use metatype;
+use serde_derive::{Deserialize, Serialize};
 use serde_json;
 use std::{any, env, fmt, mem, process, str};
+
 #[test]
 fn multi_process() {
 	#[derive(Serialize, Deserialize)]
@@ -42,9 +44,9 @@ fn multi_process() {
 		Vtable::from(ptr)
 	}
 	fn eq<T: ?Sized>(_: &T, _: &T) {}
-	let trait_object: Box<any::Any> = Box::new(1234_usize);
+	let trait_object: Box<dyn any::Any> = Box::new(1234_usize);
 	let meta: metatype::TraitObject =
-		unsafe { mem::transmute_copy(&<any::Any as metatype::Type>::meta(&*trait_object)) };
+		unsafe { mem::transmute_copy(&<dyn any::Any as metatype::Type>::meta(&*trait_object)) };
 	let a = Xxx {
 		a: unsafe { Data::from(&[0, 1, 2, 3, 4]) },
 		b: unsafe { Code::from(multi_process as *const ()) },

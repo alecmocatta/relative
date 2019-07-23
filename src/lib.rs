@@ -54,19 +54,6 @@
 	clippy::trivially_copy_pass_by_ref
 )]
 
-extern crate build_id;
-#[cfg(test)]
-extern crate metatype;
-extern crate serde;
-extern crate uuid;
-#[cfg(test)]
-#[macro_use]
-extern crate serde_derive;
-#[cfg(test)]
-extern crate bincode;
-#[cfg(test)]
-extern crate serde_json;
-
 #[cfg(test)]
 mod tests;
 
@@ -87,7 +74,7 @@ pub fn relative_code_base() {
 #[doc(hidden)]
 #[used]
 #[no_mangle]
-pub static RELATIVE_VTABLE_BASE: &(any::Any + Sync) = &() as &(any::Any + Sync);
+pub static RELATIVE_VTABLE_BASE: &(dyn any::Any + Sync) = &();
 
 /// Wraps function pointers such that they can be safely sent between other
 /// processes running the same binary.
@@ -108,7 +95,7 @@ pub struct Code<T: ?Sized>(usize, marker::PhantomData<fn(T)>);
 impl<T: ?Sized> Code<T> {
 	#[inline(always)]
 	fn new(p: usize) -> Self {
-		Code(p, marker::PhantomData)
+		Self(p, marker::PhantomData)
 	}
 	/// Create a `Code<T>` from a `*const ()`.
 	///
@@ -135,7 +122,7 @@ impl<T: ?Sized> Code<T> {
 impl<T: ?Sized> Clone for Code<T> {
 	#[inline(always)]
 	fn clone(&self) -> Self {
-		Code(self.0, marker::PhantomData)
+		Self(self.0, marker::PhantomData)
 	}
 }
 impl<T: ?Sized> Copy for Code<T> {}
@@ -234,7 +221,7 @@ pub struct Data<T>(usize, marker::PhantomData<fn(T)>);
 impl<T> Data<T> {
 	#[inline(always)]
 	fn new(p: usize) -> Self {
-		Data(p, marker::PhantomData)
+		Self(p, marker::PhantomData)
 	}
 	/// Create a `Data<T>` from a `&'static T`.
 	///
@@ -246,14 +233,26 @@ impl<T> Data<T> {
 	/// being statically linked.
 	#[inline(always)]
 	pub unsafe fn from(ptr: &'static T) -> Self {
-		let base = &RELATIVE_DATA_BASE as *const () as usize;
+		let base = {
+			let base: *const () = &RELATIVE_DATA_BASE;
+			base
+		} as usize;
 		// println!("from: {}: {}", base, intrinsics::type_name::<T>());
-		Self::new((ptr as *const T as usize).wrapping_sub(base))
+		Self::new(
+			({
+				let ptr: *const T = ptr;
+				ptr
+			} as usize)
+				.wrapping_sub(base),
+		)
 	}
 	/// Get back a `&'static T` from a `Data<T>`.
 	#[inline(always)]
 	pub fn to(&self) -> &'static T {
-		let base = &RELATIVE_DATA_BASE as *const () as usize;
+		let base = {
+			let base: *const () = &RELATIVE_DATA_BASE;
+			base
+		} as usize;
 		// println!("to: {}: {}", base, intrinsics::type_name::<T>());
 		unsafe { &*(base.wrapping_add(self.0) as *const T) }
 	}
@@ -261,7 +260,7 @@ impl<T> Data<T> {
 impl<T> Clone for Data<T> {
 	#[inline(always)]
 	fn clone(&self) -> Self {
-		Data(self.0, marker::PhantomData)
+		Self(self.0, marker::PhantomData)
 	}
 }
 impl<T> Copy for Data<T> {}
@@ -354,15 +353,15 @@ impl<'de, T: 'static> serde::de::Deserialize<'de> for Data<T> {
 /// #[doc(hidden)]
 /// #[used]
 /// #[no_mangle]
-/// pub static RELATIVE_VTABLE_BASE: &(any::Any+Sync) = &() as &(any::Any+Sync);
+/// pub static RELATIVE_VTABLE_BASE: &(dyn any::Any+Sync) = &() as &(dyn any::Any+Sync);
 ///
-/// let base = mem::transmute::<*const any::Any, raw::TraitObject>(RELATIVE_VTABLE_BASE).vtable as usize;
+/// let base = mem::transmute::<*const dyn any::Any, raw::TraitObject>(RELATIVE_VTABLE_BASE).vtable as usize;
 /// ```
 pub struct Vtable<T: ?Sized>(usize, marker::PhantomData<fn(T)>);
 impl<T: ?Sized> Vtable<T> {
 	#[inline(always)]
 	fn new(p: usize) -> Self {
-		Vtable(p, marker::PhantomData)
+		Self(p, marker::PhantomData)
 	}
 	/// Create a `Vtable<T>` from a `&'static ()`.
 	///
@@ -374,18 +373,25 @@ impl<T: ?Sized> Vtable<T> {
 	/// being statically linked.
 	#[inline(always)]
 	pub unsafe fn from(ptr: &'static ()) -> Self {
-		let base = mem::transmute::<*const any::Any, raw::TraitObject>(RELATIVE_VTABLE_BASE).vtable
-			as usize;
+		let base = mem::transmute::<*const dyn any::Any, raw::TraitObject>(RELATIVE_VTABLE_BASE)
+			.vtable as usize;
 		// let data_base = &RELATIVE_DATA_BASE as *const () as usize;
 		// println!("from: {}: {}", base.wrapping_sub(data_base), unsafe{intrinsics::type_name::<T>()});
-		Self::new((ptr as *const () as usize).wrapping_sub(base))
+		Self::new(
+			({
+				let ptr: *const () = ptr;
+				ptr
+			} as usize)
+				.wrapping_sub(base),
+		)
 	}
 	/// Get back a `&'static ()` from a `Vtable<T>`.
 	#[inline(always)]
 	pub fn to(&self) -> &'static () {
-		let base =
-			unsafe { mem::transmute::<*const any::Any, raw::TraitObject>(RELATIVE_VTABLE_BASE) }
-				.vtable as usize;
+		let base = unsafe {
+			mem::transmute::<*const dyn any::Any, raw::TraitObject>(RELATIVE_VTABLE_BASE)
+		}
+		.vtable as usize;
 		// let data_base = &RELATIVE_DATA_BASE as *const () as usize;
 		// println!("to: {}: {}", base.wrapping_sub(data_base), unsafe{intrinsics::type_name::<T>()});
 		unsafe { &*(base.wrapping_add(self.0) as *const ()) }
@@ -394,7 +400,7 @@ impl<T: ?Sized> Vtable<T> {
 impl<T: ?Sized> Clone for Vtable<T> {
 	#[inline(always)]
 	fn clone(&self) -> Self {
-		Vtable(self.0, marker::PhantomData)
+		Self(self.0, marker::PhantomData)
 	}
 }
 impl<T: ?Sized> Copy for Vtable<T> {}

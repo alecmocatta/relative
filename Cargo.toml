@@ -19,12 +19,15 @@ azure-devops = { project = "alecmocatta/relative", pipeline = "tests" }
 maintenance = { status = "actively-developed" }
 
 [dependencies]
+build_id = "0.1"
 serde = "1.0"
 uuid = { version = "0.7", features = ["serde"] }
-build_id = { version = "0.1" }
-metatype = { version = "0.1.1" }
 
 [dev-dependencies]
+bincode = "1.0"
+metatype = "0.1.1"
 serde_derive = "1.0"
 serde_json = "1.0"
-bincode = "1.0"
+
+[features]
+nightly = []

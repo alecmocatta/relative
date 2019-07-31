@@ -34,8 +34,8 @@
 //!
 //! This currently requires Rust nightly.
 
-#![doc(html_root_url = "https://docs.rs/relative/0.1.3")]
-#![feature(core_intrinsics, raw, used)]
+#![doc(html_root_url = "https://docs.rs/relative/0.1.4")]
+#![cfg_attr(feature = "nightly", feature(core_intrinsics, raw))]
 #![warn(
 	missing_copy_implementations,
 	missing_debug_implementations,
@@ -47,14 +47,15 @@
 	unused_results,
 	clippy::pedantic
 )] // from https://github.com/rust-unofficial/patterns/blob/master/anti_patterns/deny-warnings.md
-#![allow(
-	stable_features,
-	clippy::inline_always,
-	clippy::doc_markdown,
-	clippy::trivially_copy_pass_by_ref
-)]
+#![allow(clippy::inline_always, clippy::trivially_copy_pass_by_ref)]
 
-use std::{any, cmp, fmt, hash, intrinsics, marker, mem, raw};
+use serde::{
+	de::{self, Deserialize, Deserializer}, ser::{Serialize, Serializer}
+};
+use std::{
+	any::{self, type_name}, cmp, fmt, hash, hint, marker, mem
+};
+use uuid::Uuid;
 
 #[doc(hidden)]
 #[used]
@@ -65,7 +66,7 @@ pub static RELATIVE_DATA_BASE: () = ();
 #[no_mangle]
 #[inline(never)]
 pub fn relative_code_base() {
-	unsafe { intrinsics::unreachable() }
+	unsafe { hint::unreachable_unchecked() }
 }
 
 #[doc(hidden)]
@@ -73,17 +74,43 @@ pub fn relative_code_base() {
 #[no_mangle]
 pub static RELATIVE_VTABLE_BASE: &(dyn any::Any + Sync) = &();
 
+/// This is obviously a terrible no good hack to avoid requiring nightly.
+/// As well as the static size guarantee, it's correctness is asserted with the
+/// "nightly" feature, which should provide adequate warning in the event that
+/// this changes. Even if there is a change it's hard to imagine how it could
+/// cause invalid or unsound behaviour.
+#[allow(clippy::let_and_return)]
+fn type_id<T: ?Sized + 'static>() -> u64 {
+	let ret = unsafe { mem::transmute(any::TypeId::of::<T>()) };
+	#[cfg(feature = "nightly")]
+	assert_eq!(unsafe { std::intrinsics::type_id::<T>() }, ret);
+	ret
+}
+
+/// This is obviously a terrible no good hack to avoid requiring nightly.
+/// As well as the static size guarantee, it's correctness is asserted with the
+/// "nightly" feature, which should provide adequate warning in the event that
+/// this changes. Trait object layout is pretty baked into the compiler so such
+/// a change is unlikely to happen suddenly/silently.
+#[repr(C)]
+#[derive(Copy, Clone)]
+#[allow(missing_debug_implementations, missing_docs)]
+struct TraitObject {
+	data: *mut (),
+	vtable: *mut (),
+}
+
 /// Wraps function pointers such that they can be safely sent between other
 /// processes running the same binary.
 ///
 /// For references into the code aka text segment.
 ///
 /// The base used is the address of a function:
-/// ```rust,ignore
+/// ```ignore
 /// #[no_mangle]
 /// #[inline(never)]
 /// pub fn relative_code_base() {
-/// 	unsafe { intrinsics::unreachable() }
+/// 	unsafe { std::hint::unreachable_unchecked() }
 /// }
 ///
 /// let base = relative_code_base as usize;
@@ -105,14 +132,14 @@ impl<T: ?Sized> Code<T> {
 	#[inline(always)]
 	pub unsafe fn from(ptr: *const ()) -> Self {
 		let base = relative_code_base as usize;
-		// println!("from: {}: {}", base, intrinsics::type_name::<T>());
+		// println!("from: {}: {}", base, type_name::<T>());
 		Self::new((ptr as usize).wrapping_sub(base))
 	}
 	/// Get back a `*const ()` from a `Code<T>`.
 	#[inline(always)]
 	pub fn to(&self) -> *const () {
 		let base = relative_code_base as usize;
-		// println!("to: {}: {}", base, intrinsics::type_name::<T>());
+		// println!("to: {}: {}", base, type_name::<T>());
 		base.wrapping_add(self.0) as *const ()
 	}
 }
@@ -151,53 +178,50 @@ impl<T: ?Sized> Ord for Code<T> {
 impl<T: ?Sized> fmt::Debug for Code<T> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
 		f.debug_struct("Code")
-			.field(unsafe { intrinsics::type_name::<T>() }, &self.0)
+			.field(type_name::<T>(), &self.0)
 			.finish()
 	}
 }
-impl<T: ?Sized + 'static> serde::ser::Serialize for Code<T> {
+impl<T: ?Sized + 'static> Serialize for Code<T> {
 	#[inline]
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
-		S: serde::Serializer,
+		S: Serializer,
 	{
-		<(uuid::Uuid, u64, usize) as serde::ser::Serialize>::serialize(
-			&(
-				build_id::get(),
-				unsafe { intrinsics::type_id::<T>() },
-				self.0,
-			),
+		<(Uuid, u64, usize) as Serialize>::serialize(
+			&(build_id::get(), type_id::<T>(), self.0),
 			serializer,
 		)
 	}
 }
-impl<'de, T: ?Sized + 'static> serde::de::Deserialize<'de> for Code<T> {
+impl<'de, T: ?Sized + 'static> Deserialize<'de> for Code<T> {
 	#[inline]
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
-		D: serde::Deserializer<'de>,
+		D: Deserializer<'de>,
 	{
-		<(uuid::Uuid, u64, usize) as serde::de::Deserialize<'de>>::deserialize(deserializer)
-			.and_then(|(build, id, ptr)| {
+		<(Uuid, u64, usize) as Deserialize<'de>>::deserialize(deserializer).and_then(
+			|(build, id, ptr)| {
 				let local = build_id::get();
 				if build == local {
-					if id == unsafe { intrinsics::type_id::<T>() } {
+					if id == type_id::<T>() {
 						Ok(Self::new(ptr))
 					} else {
-						Err(serde::de::Error::custom(format_args!(
+						Err(de::Error::custom(format_args!(
 							"relative reference to wrong type ???:{}, expected {}:{}",
 							id,
-							unsafe { intrinsics::type_name::<T>() },
-							unsafe { intrinsics::type_id::<T>() }
+							type_name::<T>(),
+							type_id::<T>()
 						)))
 					}
 				} else {
-					Err(serde::de::Error::custom(format_args!(
+					Err(de::Error::custom(format_args!(
 						"relative reference came from a different binary {}, expected {}",
 						build, local
 					)))
 				}
-			})
+			},
+		)
 	}
 }
 
@@ -207,7 +231,7 @@ impl<'de, T: ?Sized + 'static> serde::de::Deserialize<'de> for Code<T> {
 /// For references into the data and BSS segments.
 ///
 /// The base used is the address of a zero sized static item:
-/// ```rust,ignore
+/// ```ignore
 /// #[used]
 /// #[no_mangle]
 /// pub static RELATIVE_DATA_BASE: () = ();
@@ -234,7 +258,7 @@ impl<T> Data<T> {
 			let base: *const () = &RELATIVE_DATA_BASE;
 			base
 		} as usize;
-		// println!("from: {}: {}", base, intrinsics::type_name::<T>());
+		// println!("from: {}: {}", base, type_name::<T>());
 		Self::new(
 			({
 				let ptr: *const T = ptr;
@@ -250,7 +274,7 @@ impl<T> Data<T> {
 			let base: *const () = &RELATIVE_DATA_BASE;
 			base
 		} as usize;
-		// println!("to: {}: {}", base, intrinsics::type_name::<T>());
+		// println!("to: {}: {}", base, type_name::<T>());
 		unsafe { &*(base.wrapping_add(self.0) as *const T) }
 	}
 }
@@ -289,53 +313,50 @@ impl<T> Ord for Data<T> {
 impl<T> fmt::Debug for Data<T> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
 		f.debug_struct("Data")
-			.field(unsafe { intrinsics::type_name::<T>() }, &self.0)
+			.field(type_name::<T>(), &self.0)
 			.finish()
 	}
 }
-impl<T: 'static> serde::ser::Serialize for Data<T> {
+impl<T: 'static> Serialize for Data<T> {
 	#[inline]
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
-		S: serde::Serializer,
+		S: Serializer,
 	{
-		<(uuid::Uuid, u64, usize) as serde::ser::Serialize>::serialize(
-			&(
-				build_id::get(),
-				unsafe { intrinsics::type_id::<T>() },
-				self.0,
-			),
+		<(Uuid, u64, usize) as Serialize>::serialize(
+			&(build_id::get(), type_id::<T>(), self.0),
 			serializer,
 		)
 	}
 }
-impl<'de, T: 'static> serde::de::Deserialize<'de> for Data<T> {
+impl<'de, T: 'static> Deserialize<'de> for Data<T> {
 	#[inline]
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
-		D: serde::Deserializer<'de>,
+		D: Deserializer<'de>,
 	{
-		<(uuid::Uuid, u64, usize) as serde::de::Deserialize<'de>>::deserialize(deserializer)
-			.and_then(|(build, id, ptr)| {
+		<(Uuid, u64, usize) as Deserialize<'de>>::deserialize(deserializer).and_then(
+			|(build, id, ptr)| {
 				let local = build_id::get();
 				if build == local {
-					if id == unsafe { intrinsics::type_id::<T>() } {
+					if id == type_id::<T>() {
 						Ok(Self::new(ptr))
 					} else {
-						Err(serde::de::Error::custom(format_args!(
+						Err(de::Error::custom(format_args!(
 							"relative reference to wrong type ???:{}, expected {}:{}",
 							id,
-							unsafe { intrinsics::type_name::<T>() },
-							unsafe { intrinsics::type_id::<T>() }
+							type_name::<T>(),
+							type_id::<T>()
 						)))
 					}
 				} else {
-					Err(serde::de::Error::custom(format_args!(
+					Err(de::Error::custom(format_args!(
 						"relative reference came from a different binary {}, expected {}",
 						build, local
 					)))
 				}
-			})
+			},
+		)
 	}
 }
 
@@ -346,13 +367,12 @@ impl<'de, T: 'static> serde::de::Deserialize<'de> for Data<T> {
 /// read-only data segment aka rodata.
 ///
 /// The base used is the vtable of a static trait object:
-/// ```rust,ignore
-/// #[doc(hidden)]
+/// ```ignore
 /// #[used]
 /// #[no_mangle]
-/// pub static RELATIVE_VTABLE_BASE: &(dyn any::Any+Sync) = &() as &(dyn any::Any+Sync);
+/// pub static RELATIVE_VTABLE_BASE: &(dyn any::Any + Sync) = &();
 ///
-/// let base = mem::transmute::<*const dyn any::Any, raw::TraitObject>(RELATIVE_VTABLE_BASE).vtable as usize;
+/// let base = mem::transmute::<*const dyn any::Any, std::raw::TraitObject>(RELATIVE_VTABLE_BASE).vtable as usize;
 /// ```
 pub struct Vtable<T: ?Sized>(usize, marker::PhantomData<fn(T)>);
 impl<T: ?Sized> Vtable<T> {
@@ -370,10 +390,17 @@ impl<T: ?Sized> Vtable<T> {
 	/// being statically linked.
 	#[inline(always)]
 	pub unsafe fn from(ptr: &'static ()) -> Self {
-		let base = mem::transmute::<*const dyn any::Any, raw::TraitObject>(RELATIVE_VTABLE_BASE)
-			.vtable as usize;
+		let base = mem::transmute::<*const dyn any::Any, TraitObject>(RELATIVE_VTABLE_BASE).vtable
+			as usize;
+		#[cfg(feature = "nightly")]
+		{
+			let check_base =
+				mem::transmute::<*const dyn any::Any, std::raw::TraitObject>(RELATIVE_VTABLE_BASE)
+					.vtable as usize;
+			assert_eq!(check_base, base);
+		}
 		// let data_base = &RELATIVE_DATA_BASE as *const () as usize;
-		// println!("from: {}: {}", base.wrapping_sub(data_base), unsafe{intrinsics::type_name::<T>()});
+		// println!("from: {}: {}", base.wrapping_sub(data_base), unsafe{type_name::<T>()});
 		Self::new(
 			({
 				let ptr: *const () = ptr;
@@ -385,12 +412,19 @@ impl<T: ?Sized> Vtable<T> {
 	/// Get back a `&'static ()` from a `Vtable<T>`.
 	#[inline(always)]
 	pub fn to(&self) -> &'static () {
-		let base = unsafe {
-			mem::transmute::<*const dyn any::Any, raw::TraitObject>(RELATIVE_VTABLE_BASE)
+		let base =
+			unsafe { mem::transmute::<*const dyn any::Any, TraitObject>(RELATIVE_VTABLE_BASE) }
+				.vtable as usize;
+		#[cfg(feature = "nightly")]
+		{
+			let check_base = unsafe {
+				mem::transmute::<*const dyn any::Any, std::raw::TraitObject>(RELATIVE_VTABLE_BASE)
+			}
+			.vtable as usize;
+			assert_eq!(check_base, base);
 		}
-		.vtable as usize;
 		// let data_base = &RELATIVE_DATA_BASE as *const () as usize;
-		// println!("to: {}: {}", base.wrapping_sub(data_base), unsafe{intrinsics::type_name::<T>()});
+		// println!("to: {}: {}", base.wrapping_sub(data_base), unsafe{type_name::<T>()});
 		unsafe { &*(base.wrapping_add(self.0) as *const ()) }
 	}
 }
@@ -429,53 +463,50 @@ impl<T: ?Sized> Ord for Vtable<T> {
 impl<T: ?Sized> fmt::Debug for Vtable<T> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
 		f.debug_struct("Vtable")
-			.field(unsafe { intrinsics::type_name::<T>() }, &self.0)
+			.field(type_name::<T>(), &self.0)
 			.finish()
 	}
 }
-impl<T: ?Sized + 'static> serde::ser::Serialize for Vtable<T> {
+impl<T: ?Sized + 'static> Serialize for Vtable<T> {
 	#[inline]
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
-		S: serde::Serializer,
+		S: Serializer,
 	{
-		<(uuid::Uuid, u64, usize) as serde::ser::Serialize>::serialize(
-			&(
-				build_id::get(),
-				unsafe { intrinsics::type_id::<T>() },
-				self.0,
-			),
+		<(Uuid, u64, usize) as Serialize>::serialize(
+			&(build_id::get(), type_id::<T>(), self.0),
 			serializer,
 		)
 	}
 }
-impl<'de, T: ?Sized + 'static> serde::de::Deserialize<'de> for Vtable<T> {
+impl<'de, T: ?Sized + 'static> Deserialize<'de> for Vtable<T> {
 	#[inline]
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
-		D: serde::Deserializer<'de>,
+		D: Deserializer<'de>,
 	{
-		<(uuid::Uuid, u64, usize) as serde::de::Deserialize<'de>>::deserialize(deserializer)
-			.and_then(|(build, id, ptr)| {
+		<(Uuid, u64, usize) as Deserialize<'de>>::deserialize(deserializer).and_then(
+			|(build, id, ptr)| {
 				let local = build_id::get();
 				if build == local {
-					if id == unsafe { intrinsics::type_id::<T>() } {
+					if id == type_id::<T>() {
 						Ok(Self::new(ptr))
 					} else {
-						Err(serde::de::Error::custom(format_args!(
+						Err(de::Error::custom(format_args!(
 							"relative reference to wrong type ???:{}, expected {}:{}",
 							id,
-							unsafe { intrinsics::type_name::<T>() },
-							unsafe { intrinsics::type_id::<T>() }
+							type_name::<T>(),
+							type_id::<T>()
 						)))
 					}
 				} else {
-					Err(serde::de::Error::custom(format_args!(
+					Err(de::Error::custom(format_args!(
 						"relative reference came from a different binary {}, expected {}",
 						build, local
 					)))
 				}
-			})
+			},
+		)
 	}
 }
 

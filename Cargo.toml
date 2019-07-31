@@ -1,6 +1,6 @@
 [package]
 name = "relative"
-version = "0.1.3"
+version = "0.1.4"
 license = "MIT OR Apache-2.0"
 authors = ["Alec Mocatta <alec@mocatta.net>"]
 categories = ["development-tools","encoding","rust-patterns","network-programming"]
@@ -10,7 +10,7 @@ A type to wrap `&'static` references such that they can be safely sent between o
 """
 repository = "https://github.com/alecmocatta/relative"
 homepage = "https://github.com/alecmocatta/relative"
-documentation = "https://docs.rs/relative/0.1.3"
+documentation = "https://docs.rs/relative/0.1.4"
 readme = "README.md"
 edition = "2018"
 
@@ -19,12 +19,15 @@ azure-devops = { project = "alecmocatta/relative", pipeline = "tests" }
 maintenance = { status = "actively-developed" }
 
 [dependencies]
+build_id = "0.1"
 serde = "1.0"
 uuid = { version = "0.7", features = ["serde"] }
-build_id = { version = "0.1" }
-metatype = { version = "0.1.1" }
 
 [dev-dependencies]
+bincode = "1.0"
+metatype = "0.1.1"
 serde_derive = "1.0"
 serde_json = "1.0"
-bincode = "1.0"
+
+[features]
+nightly = []

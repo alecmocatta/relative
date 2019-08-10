@@ -34,7 +34,7 @@
 //!
 //! This currently requires Rust nightly.
 
-#![doc(html_root_url = "https://docs.rs/relative/0.1.4")]
+#![doc(html_root_url = "https://docs.rs/relative/0.1.5")]
 #![cfg_attr(feature = "nightly", feature(core_intrinsics, raw))]
 #![warn(
 	missing_copy_implementations,

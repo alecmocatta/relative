@@ -526,12 +526,22 @@ impl<'de, T: ?Sized + 'static> Deserialize<'de> for Vtable<T> {
 
 #[cfg(test)]
 mod tests {
-	use super::{Code, Data, Vtable};
+	use super::{type_id, Code, Data, Vtable};
 	use bincode;
 	use metatype;
 	use serde_derive::{Deserialize, Serialize};
 	use serde_json;
 	use std::{any, env, fmt, mem, process, str};
+
+	#[test]
+	fn type_id_sanity() {
+		struct A;
+		struct B;
+		assert_ne!(type_id::<u8>(), type_id::<u16>());
+		assert_ne!(type_id::<A>(), type_id::<B>());
+		assert_eq!(type_id::<u8>(), type_id::<u8>());
+		assert_eq!(type_id::<A>(), type_id::<A>());
+	}
 
 	#[test]
 	fn multi_process() {

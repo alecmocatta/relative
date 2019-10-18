@@ -6,8 +6,8 @@
 
 [Docs](https://docs.rs/relative/0.2.0)
 
-A type to wrap `&'static` references such that they can be safely sent between
-other processes running the same binary.
+A type to wrap vtable references such that they can be safely sent between other
+processes running the same binary.
 
 References are adjusted relative to a base when (de)serialised, which is what
 enables it to work across binaries that are dynamically loaded at different
@@ -20,21 +20,22 @@ validated at deserialisation.
 ## Example
 ### Local process
 ```rust
-let x: &'static [u16;4] = &[2,3,5,8];
-// unsafe as it's up to the user to ensure the reference is into static memory
-let relative = unsafe{Data::from(x)};
+use std::{fmt::Display, mem::transmute_copy, raw::TraitObject};
+let x: Box<dyn Display> = Box::new("hello world");
+let x: TraitObject = unsafe { transmute_copy(&x) };
+let relative = unsafe { Vtable::<dyn Display>::from(&*x.vtable) };
 // send `relative` to remote...
 ```
 ### Remote process
 ```rust
 // receive `relative`
-println!("{:?}", relative.to());
-// prints "[2, 3, 5, 8]"
+let x: Box<&str> = Box::new("goodbye world");
+let x = Box::into_raw(x);
+let x = TraitObject { data: x.cast(), vtable: relative.to() as *const () as *mut () };
+let x: Box<dyn Display> = unsafe { transmute(x) };
+println!("{}", x);
+// prints "goodbye world"
 ```
-
-## Note
-
-This currently requires Rust nightly.
 
 ## License
 Licensed under either of

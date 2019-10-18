@@ -35,7 +35,7 @@
 //! This currently requires Rust nightly.
 
 #![doc(html_root_url = "https://docs.rs/relative/0.1.5")]
-#![cfg_attr(feature = "nightly", feature(core_intrinsics, raw))]
+#![cfg_attr(feature = "nightly", feature(raw))]
 #![warn(
 	missing_copy_implementations,
 	missing_debug_implementations,
@@ -47,12 +47,18 @@
 	unused_results,
 	clippy::pedantic
 )] // from https://github.com/rust-unofficial/patterns/blob/master/anti_patterns/deny-warnings.md
-#![allow(clippy::inline_always, clippy::trivially_copy_pass_by_ref)]
+#![allow(
+	clippy::inline_always,
+	clippy::trivially_copy_pass_by_ref,
+	clippy::must_use_candidate
+)]
 
 use serde::{
 	de::{self, Deserialize, Deserializer}, ser::{Serialize, Serializer}
 };
-use std::{any, cmp, fmt, hash, hint, marker, mem};
+use std::{
+	any::{self, type_name, TypeId}, cmp, fmt, hash, hint, marker, mem
+};
 use uuid::Uuid;
 
 #[doc(hidden)]
@@ -73,32 +79,11 @@ pub fn relative_code_base() {
 pub static RELATIVE_VTABLE_BASE: &(dyn any::Any + Sync) = &();
 
 fn type_id<T: ?Sized + 'static>() -> u64 {
-	#[cfg(feature = "nightly")]
-	{
-		unsafe { std::intrinsics::type_id::<T>() }
-	}
-	#[cfg(not(feature = "nightly"))]
-	{
-		use std::hash::{Hash, Hasher};
-		let type_id = any::TypeId::of::<T>();
-		let mut hasher = std::collections::hash_map::DefaultHasher::new();
-		type_id.hash(&mut hasher);
-		hasher.finish()
-	}
-}
-
-fn type_name<T: ?Sized>() -> &'static str {
-	#[cfg(feature = "nightly")]
-	{
-		#[allow(unused_unsafe)]
-		unsafe {
-			std::intrinsics::type_name::<T>() // TODO: std::any::type_name::<T>()
-		}
-	}
-	#[cfg(not(feature = "nightly"))]
-	{
-		"<unknown>"
-	}
+	use std::hash::{Hash, Hasher};
+	let type_id = TypeId::of::<T>();
+	let mut hasher = std::collections::hash_map::DefaultHasher::new();
+	type_id.hash(&mut hasher);
+	hasher.finish()
 }
 
 /// This is obviously a terrible no good hack to avoid requiring nightly.
@@ -136,6 +121,8 @@ impl<T: ?Sized> Code<T> {
 		Self(p, marker::PhantomData)
 	}
 	/// Create a `Code<T>` from a `*const ()`.
+	///
+	/// # Safety
 	///
 	/// This is unsafe as it is up to the user to ensure the pointer lies within
 	/// static memory.
@@ -259,6 +246,8 @@ impl<T> Data<T> {
 		Self(p, marker::PhantomData)
 	}
 	/// Create a `Data<T>` from a `&'static T`.
+	///
+	/// # Safety
 	///
 	/// This is unsafe as it is up to the user to ensure the pointer lies within
 	/// static memory.
@@ -395,6 +384,8 @@ impl<T: ?Sized> Vtable<T> {
 		Self(p, marker::PhantomData)
 	}
 	/// Create a `Vtable<T>` from a `&'static ()`.
+	///
+	/// # Safety
 	///
 	/// This is unsafe as it is up to the user to ensure the pointer lies within
 	/// static memory.

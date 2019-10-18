@@ -19,7 +19,7 @@ azure-devops = { project = "alecmocatta/relative", pipeline = "tests" }
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-build_id = "0.1"
+build_id = "0.2"
 serde = "1.0"
 uuid = { version = "0.8", features = ["serde"] }
 

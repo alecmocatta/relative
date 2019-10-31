@@ -20,20 +20,23 @@ validated at deserialisation.
 ## Example
 ### Local process
 ```rust
-use std::{fmt::Display, mem::transmute_copy, raw::TraitObject};
-let x: Box<dyn Display> = Box::new("hello world");
-let x: TraitObject = unsafe { transmute_copy(&x) };
-let relative = unsafe { Vtable::<dyn Display>::from(&*x.vtable) };
+use std::{fmt::Display, mem::transmute, raw::TraitObject};
+
+let mut x: Box<dyn Display> = Box::new("hello world");
+let x_ptr: *mut dyn Display = &mut *x;
+let x_ptr: TraitObject = unsafe { transmute(x_ptr) };
+let relative = unsafe { Vtable::<dyn Display>::from(&*x_ptr.vtable) };
 // send `relative` to remote...
 ```
 ### Remote process
 ```rust
 // receive `relative`
 let x: Box<&str> = Box::new("goodbye world");
-let x = Box::into_raw(x);
-let x = TraitObject { data: x.cast(), vtable: relative.to() as *const () as *mut () };
-let x: Box<dyn Display> = unsafe { transmute(x) };
-println!("{}", x);
+let x_ptr = Box::into_raw(x);
+let y_ptr = TraitObject { data: x_ptr.cast(), vtable: relative.to() as *const () as *mut () };
+let y_ptr: *mut dyn Display = unsafe { transmute(y_ptr) };
+let y: Box<dyn Display> = unsafe { Box::from_raw(y_ptr) };
+println!("{}", y);
 // prints "goodbye world"
 ```
 

@@ -4,7 +4,7 @@
 [![MIT / Apache 2.0 licensed](https://img.shields.io/crates/l/relative.svg?maxAge=2592000)](#License)
 [![Build Status](https://dev.azure.com/alecmocatta/relative/_apis/build/status/tests?branchName=master)](https://dev.azure.com/alecmocatta/relative/_build/latest?branchName=master)
 
-[Docs](https://docs.rs/relative/0.2.0)
+[Docs](https://docs.rs/relative/0.2.1)
 
 A type to wrap vtable references such that they can be safely sent between other
 processes running the same binary.

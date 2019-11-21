@@ -1,6 +1,6 @@
 [package]
 name = "relative"
-version = "0.2.1"
+version = "0.2.2"
 license = "MIT OR Apache-2.0"
 authors = ["Alec Mocatta <alec@mocatta.net>"]
 categories = ["development-tools","encoding","rust-patterns","network-programming"]
@@ -10,7 +10,7 @@ A type to wrap vtable references such that they can be safely sent between other
 """
 repository = "https://github.com/alecmocatta/relative"
 homepage = "https://github.com/alecmocatta/relative"
-documentation = "https://docs.rs/relative/0.2.1"
+documentation = "https://docs.rs/relative/0.2.2"
 readme = "README.md"
 links = "relative"
 build = "build.rs"

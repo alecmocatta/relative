@@ -13,6 +13,7 @@ homepage = "https://github.com/alecmocatta/relative"
 documentation = "https://docs.rs/relative/0.2.1"
 readme = "README.md"
 links = "relative"
+build = "build.rs"
 edition = "2018"
 
 [badges]
